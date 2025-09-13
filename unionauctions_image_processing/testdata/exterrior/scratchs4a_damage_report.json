@@ -1,0 +1,67 @@
+{
+  "damages": [
+    {
+      "damage_type": "scratch",
+      "location": "front bumper, lower-left",
+      "severity": "minor",
+      "confidence": 0.85,
+      "description": "Small white scratch near the lower-left edge of the front bumper.",
+      "count": 1,
+      "bounding_box": [
+        0.08,
+        0.82,
+        0.13,
+        0.89
+      ]
+    },
+    {
+      "damage_type": "scratch",
+      "location": "front bumper, lower-center",
+      "severity": "minor",
+      "confidence": 0.8,
+      "description": "Faint scratch marks and paint chips near the center bottom of the front bumper.",
+      "count": 1,
+      "bounding_box": [
+        0.38,
+        0.88,
+        0.52,
+        0.93
+      ]
+    },
+    {
+      "damage_type": "scratch",
+      "location": "front bumper, lower-right",
+      "severity": "minor",
+      "confidence": 0.83,
+      "description": "Multiple small scratches and paint chips on the lower-right edge of the front bumper.",
+      "count": 1,
+      "bounding_box": [
+        0.82,
+        0.83,
+        0.92,
+        0.91
+      ]
+    },
+    {
+      "damage_type": "scratch",
+      "location": "front bumper, right side",
+      "severity": "minor",
+      "confidence": 0.75,
+      "description": "Faint vertical scratch above the lower-right bumper scratches.",
+      "count": 1,
+      "bounding_box": [
+        0.88,
+        0.68,
+        0.92,
+        0.75
+      ]
+    }
+  ],
+  "summary": {
+    "scratch": 4,
+    "dent": 0,
+    "rust": 0,
+    "none": 0
+  },
+  "text_summary": "The vehicle's front bumper exhibits several minor scratches and paint chips, primarily along the lower-left, lower-center, and lower-right edges. No dents or rust are visible, and the overall condition of the front exterior is fair, with only superficial cosmetic damage."
+}
