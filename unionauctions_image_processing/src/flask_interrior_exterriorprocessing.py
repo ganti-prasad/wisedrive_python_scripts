@@ -55,7 +55,7 @@ def annotate_interior(image, result):
     return image
 
 # --- Prompts ---
-exterior_prompt = """
+exterior_prompt_notused = """
 Act as a senior mechanic:
 
 This is a car image. Identify and analyze all visible external damages or defects.
@@ -82,7 +82,88 @@ Rules:
 - Always provide bounding_box for each detection, based on the actual visible area of damage.
 - Do not report 'none' unless absolutely no damage is visible."""
 
-interior_prompt = """
+exterior_prompt = """
+Act as a senior automotive damage inspector.
+
+You are analyzing a car image for visible external damages. Your task is to identify and describe each damage instance separately, even if they are adjacent or overlapping. Include faint, partial, or borderline defects using a low confidence threshold if needed.
+
+Output Format:
+Respond with a single, valid JSON object. Do not include markdown formatting, code fences, or any explanatory text. The JSON must be directly parseable using standard JSON parsers.
+
+The JSON must contain:
+{
+  "damages": [
+    {
+      "damage_type": "scratches" or "dents",
+      "location": "e.g. front-left fender, rear bumper",
+      "severity": "minor" | "moderate" | "severe",
+      "confidence": float between 0 and 1,
+      "description": "short description of the damage",
+      "count": integer (number of instances),
+      "bounding_box": [x1, y1, x2, y2] — normalized coordinates (0 to 1)
+    },
+    ...
+  ],
+  "summary": {
+    "scratches": total count (integer),
+    "dents": total count (integer)
+  },
+  "text_summary": "2-3 sentence description of overall condition"
+}
+
+Rules:
+- Return all visible damage instances, even faint or borderline ones.
+- Do not merge multiple damages into one object.
+- Do not skip faint or partial damages due to low contrast or small size.
+- Ignore reflections, shadows, dirt, water spots, or camera artifacts.
+- Always provide bounding_box for each detection.
+- Do not include markdown, comments, or extra text outside the JSON.
+- Do not return 'none' unless absolutely no damage is visible.
+"""
+
+# --- Routes ---
+@app.route('/exterioranalysis', methods=['POST'])
+def analyze_exterior():
+    start_time = datetime.now()
+    if 'image' not in request.files:
+        return jsonify({"error": "No image uploaded"}), 400
+
+    image_bytes = request.files['image'].read()
+    image_np = np.frombuffer(image_bytes, np.uint8)
+    image = cv2.imdecode(image_np, cv2.IMREAD_COLOR)
+    image_b64 = base64.b64encode(image_bytes).decode("utf-8")
+
+    response = client.chat.completions.create(
+        model="gpt-4.1",
+        messages=[{"role": "user", "content": [
+            {"type": "text", "text": exterior_prompt},
+            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}}
+        ]}],
+        temperature=0
+    )
+
+    raw_text = response.choices[0].message.content
+    print(raw_text)
+    json_text = clean_gpt_response(raw_text)
+    result = safe_parse_json(json_text)
+
+    if not result:
+        return jsonify({"error": "Could not parse GPT response", "raw_output": raw_text}), 500
+
+    annotated = annotate_image(image.copy(), result)
+    encoded_img = image_to_base64(annotated)
+    summary = result.get("summary", {})
+    dents = int(summary.get("dents", 0)) if isinstance(summary.get("dents", 0), (int, float)) else 0
+    scratches = int(summary.get("scratches", 0)) if isinstance(summary.get("scratches", 0), (int, float)) else 0
+
+    return jsonify({
+        "image": encoded_img,
+        "summary": f"dents={dents}~scratches={scratches}",
+        "text_summary": result.get("text_summary", "")
+    })
+
+
+interior_prompt_notused = """
 You are an expert automotive inspector. Analyze the given car interior image and identify only the visible problem areas.
 
 Target components:
@@ -111,45 +192,49 @@ Exclude clean or non-visible components. Output must be structured in a single J
 Do not return markdown, bullet points, or any text outside the JSON object.
 Do not write any text on the image, just highlight the issue area. Do not show issues with Severity Low."""
 
-# --- Routes ---
-@app.route('/exterioranalysis', methods=['POST'])
-def analyze_exterior():
-    start_time = datetime.now()
-    if 'image' not in request.files:
-        return jsonify({"error": "No image uploaded"}), 400
+interior_prompt = """
+You are an expert automotive inspector. Analyze the given car interior image and identify only the visible problem areas.
 
-    image_bytes = request.files['image'].read()
-    image_np = np.frombuffer(image_bytes, np.uint8)
-    image = cv2.imdecode(image_np, cv2.IMREAD_COLOR)
-    image_b64 = base64.b64encode(image_bytes).decode("utf-8")
+Target components:
+- Seats: stains, tears, discoloration, missing covers
+- Roof lining: sagging, dirt patches, water damage
+- Dashboard & console: cracks, dust accumulation, missing knobs
+- Door panels: scratches, broken handles, torn fabric
+- Floor mats & carpet: dirt, wear, foreign objects
+- Rear shelf / boot cover: damage, missing parts
+- Other visible areas: misplaced items, trash, unusual wear
 
-    response = client.chat.completions.create(
-        model="gpt-4.1",
-        messages=[{"role": "user", "content": [
-            {"type": "text", "text": exterior_prompt},
-            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}}
-        ]}],
-        temperature=0
-    )
+Return a single valid JSON object with the following structure:
 
-    raw_text = response.choices[0].message.content
-    json_text = clean_gpt_response(raw_text)
-    result = safe_parse_json(json_text)
+{
+  "inspection_report": [
+    {
+      "component_name": "string",
+      "issue_type": "string",
+      "severity": "Medium" or "High",
+      "suggested_action": "Clean" or "Repair" or "Replace",
+      "confidence": float between 0 and 1,
+      "bounding_box": {
+        "x": integer (pixels),
+        "y": integer (pixels),
+        "width": integer (pixels),
+        "height": integer (pixels)
+      }
+    },
+    ...
+  ],
+  "text_summary": "2-3 sentence description of overall condition"
+}
 
-    if not result:
-        return jsonify({"error": "Could not parse GPT response", "raw_output": raw_text}), 500
-
-    annotated = annotate_image(image.copy(), result)
-    encoded_img = image_to_base64(annotated)
-    summary = result.get("summary", {})
-    dents = int(summary.get("dents", 0)) if isinstance(summary.get("dents", 0), (int, float)) else 0
-    scratches = int(summary.get("scratches", 0)) if isinstance(summary.get("scratches", 0), (int, float)) else 0
-
-    return jsonify({
-        "image": encoded_img,
-        "summary": f"dents={dents}~scratches={scratches}",
-        "text_summary": result.get("text_summary", "")
-    })
+Rules:
+- Only include issues with severity Medium or High.
+- Exclude clean or non-visible components.
+- Do not include markdown, bullet points, comments, or explanatory text outside the JSON.
+- Do not use code fences or formatting like ```json.
+- Do not write any text on the image.
+- Ensure bounding_box is a dictionary with pixel values, not normalized coordinates or lists.
+- The JSON must be directly parseable using standard JSON parsers.
+"""
 
 @app.route('/interioranalysis', methods=['POST'])
 def analyze_interior():
@@ -173,6 +258,7 @@ def analyze_interior():
 
     raw_text = response.choices[0].message.content
     json_text = clean_gpt_response(raw_text)
+    print("json_text:", json_text)
     result = safe_parse_json(json_text)
 
     if not result:
